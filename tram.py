@@ -145,7 +145,7 @@ def main():
                 else:
                     ml,usedreads,alignments,e,seq=v
                 
-                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\n"%(chrom,trfstart,trfend,trfend-trfstart,",".join([str(x) for x in e]),",".join(usedreads)))
+                sys.stdout.write("%s\t%d\t%d\t%d\t%s\n"%(chrom,trfstart,trfend,trfend-trfstart,",".join([str(x) for x in e])))
 
                 if slice:
                     for a in alignments:
