@@ -133,26 +133,30 @@ def main():
     if slice:
         slicefile=pysam.AlignmentFile(args.bamfile.replace(".bam",".slice.bam"), "wb", template=bamfile)
     
-    with open(args.bedfile) as trf:
-        for i,line in enumerate(trf):
-            cols=line.split("\t")
-            chrom,trfstart,trfend=cols[0],int(cols[1]),int(cols[2])
-            v=estimateexpansion(bamfile,chrom,trfstart,trfend,wiggle=args.wiggle,usesplitreads=args.usesplitreads)
-            
-            if v==None:
-                ml,usedreads,alignments,e,seq=(-1,[],[],[],[])
-            else:
-                ml,usedreads,alignments,e,seq=v
-            
-            sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\n"%(chrom,trfstart,trfend,trfend-trfstart,",".join([str(x) for x in e]),",".join(usedreads)))
+    try:
+        with open(args.bedfile) as trf:
+            for i,line in enumerate(trf):
+                cols=line.split("\t")
+                chrom,trfstart,trfend=cols[0],int(cols[1]),int(cols[2])
+                v=estimateexpansion(bamfile,chrom,trfstart,trfend,wiggle=args.wiggle,usesplitreads=args.usesplitreads)
+                
+                if v==None:
+                    ml,usedreads,alignments,e,seq=(-1,[],[],[],[])
+                else:
+                    ml,usedreads,alignments,e,seq=v
+                
+                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\n"%(chrom,trfstart,trfend,trfend-trfstart,",".join([str(x) for x in e]),",".join(usedreads)))
 
-            if slice:
-                for a in alignments:
-                    if isinstance(a,tuple):
-                        slicefile.write(a[0])
-                        slicefile.write(a[1])
-                    else:
-                        slicefile.write(a)
+                if slice:
+                    for a in alignments:
+                        if isinstance(a,tuple):
+                            slicefile.write(a[0])
+                            slicefile.write(a[1])
+                        else:
+                            slicefile.write(a)
+    except IOError as e:
+        if e.errno == errno.EPIPE:
+            pass
     
     if slice:
         slicefile.close()
