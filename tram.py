@@ -8,7 +8,7 @@ import numpy as np
 import random
 from intervaltree import IntervalTree, Interval
 import argparse
-import sys
+import sys, errno
 
 
 def querypositionsfromsplitreads(read1,read2,trfstart,trfend):
