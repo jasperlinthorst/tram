@@ -8,6 +8,8 @@ import numpy as np
 import random
 from intervaltree import IntervalTree, Interval
 import argparse
+import sys
+
 
 def querypositionsfromsplitreads(read1,read2,trfstart,trfend):
     r1lhclip=read1.cigar[0][1] if read1.cigar[0][0]==5 else 0
@@ -114,26 +116,45 @@ def main():
     """
     
     parser = argparse.ArgumentParser(prog="tram", usage="tram -h for usage", description=desc)
-    parser.add_argument('bamfile', nargs=1, help='BAM file that contains the long read alignments.')
-    parser.add_argument('bedfile', nargs=1, help='BED file specifying the (repeat) regions to scan for expansion/contraction.')
+    parser.add_argument('bamfile', type=str, help='BAM file that contains the long read alignments.')
+    parser.add_argument('bedfile', type=str, help='BED file specifying the (repeat) regions to scan for expansion/contraction.')
     parser.add_argument("--wiggle", dest="wiggle", type=int, default=500, help="How far split reads may span region start and end point and still be considered for length estimation.")
     parser.add_argument("--nosplitreads", dest="usesplitreads", action="store_false", default=True, help="Don't use splitreads for length estimation.")
+    parser.add_argument("--slice", dest="slice", action="store_true", default=False, help="Produce a bam file that contains only the subset of the alignments that were used for the length estimations.")
     
     args = parser.parse_args()
 
     bamfile=pysam.AlignmentFile(args.bamfile, "rb")
     
+    if not args.bamfile.endswith(".bam"):
+        print "Invalid bam file."
+        return
+    
+    if slice:
+        slicefile=pysam.AlignmentFile(args.bamfile.replace(".bam",".slice.bam"), "wb", template=bamfile)
+    
     with open(args.bedfile) as trf:
         for i,line in enumerate(trf):
             cols=line.split("\t")
             chrom,trfstart,trfend=cols[0],int(cols[1]),int(cols[2])
-            v=estimateexpansion(w115pysamfile,chrom,trfstart,trfend,wiggle=args.wiggle,usesplitreads=args.usesplitreads)
+            v=estimateexpansion(bamfile,chrom,trfstart,trfend,wiggle=args.wiggle,usesplitreads=args.usesplitreads)
             
             if v==None:
                 ml,usedreads,alignments,e,seq=(-1,[],[],[],[])
             else:
                 ml,usedreads,alignments,e,seq=v
             
-            sys.stdout.write("%s\t%d\t%d\t%s\t%s\n"%(chrom,trfstart,trfend,",".join([str(x) for x in e]),",".join(usedreads)))
+            sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\n"%(chrom,trfstart,trfend,trfend-trfstart,",".join([str(x) for x in e]),",".join(usedreads)))
+
+            if slice:
+                for a in alignments:
+                    if isinstance(a,tuple):
+                        slicefile.write(a[0])
+                        slicefile.write(a[1])
+                    else:
+                        slicefile.write(a)
     
-    bamfile=pysam.AlignmentFile(args.bamfile, "rb")
+    if slice:
+        slicefile.close()
+
+    bamfile.close()
