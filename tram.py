@@ -110,10 +110,10 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=1000,returnseq=Fals
 
 def main():
     desc="""
-    Type 'trap <positional_argument> --help' for help on a specific subcommand.
+    Type 'tram <positional_argument> --help' for help on a specific subcommand.
     """
     
-    parser = argparse.ArgumentParser(prog="trap", usage="trap -h for usage", description=desc)
+    parser = argparse.ArgumentParser(prog="tram", usage="tram -h for usage", description=desc)
     parser.add_argument('bamfile', nargs=1, help='BAM file that contains the long read alignments.')
     parser.add_argument('bedfile', nargs=1, help='BED file specifying the (repeat) regions to scan for expansion/contraction.')
     parser.add_argument("--wiggle", dest="wiggle", type=int, default=500, help="How far split reads may span region start and end point and still be considered for length estimation.")
