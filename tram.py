@@ -131,7 +131,7 @@ def main():
         return
     
     if slice:
-        slicefile=pysam.AlignmentFile(args.bamfile.replace(".bam",".slice.bam"), "wb", template=bamfile)
+        slicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".slice.bam"), "wb", template=bamfile)
     
     try:
         with open(args.bedfile) as trf:
