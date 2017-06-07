@@ -102,7 +102,7 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
                 se.append(qb-qa)
                 sorientations.append(reads[0].is_reverse)
                 if returnseq:
-                    sseq.append(s[qa:qb])            
+                    sseq.append(s[qa:qb])
                 salignments.append(reads[0])
             
             else:
@@ -156,7 +156,7 @@ def main():
     parser.add_argument("--wiggle", dest="wiggle", type=int, default=None, help="How far split reads may span region start and end point and still be considered for length estimation (default: equal to length of repeat pattern).")
     parser.add_argument("--nosplitreads", dest="usesplitreads", action="store_false", default=True, help="Don't use splitreads for length estimation.")
     parser.add_argument("--seq", dest="returnseq", action="store_true", default=False, help="Return the sequence in between the two flanks.")
-    parser.add_argument("--slice", dest="slice", action="store_true", default=False, help="Produce bam files (s=singleread,p=splitreads,c=clipping) that contain subsets of the alignments that were used for estimating the lengths.")
+    parser.add_argument("--slice", dest="bamslice", action="store_true", default=False, help="Produce bam files (s=singleread,p=splitreads,c=clipping) that contain subsets of the alignments that were used for estimating the lengths.")
     
     args = parser.parse_args()
     
@@ -166,7 +166,7 @@ def main():
         print "Invalid bam file."
         return
     
-    if slice:
+    if args.bamslice:
         sslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".sslice.bam"), "wb", template=bamfile)
         pslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".pslice.bam"), "wb", template=bamfile)
         cslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".cslice.bam"), "wb", template=bamfile)
@@ -202,7 +202,7 @@ def main():
                 
                 sys.stdout.write("\n")
                 
-                if slice:
+                if args.bamslice:
                     for a in salignments:
                         if isinstance(a,tuple):
                             sslicefile.write(a[0])
@@ -215,7 +215,7 @@ def main():
                             pslicefile.write(a[1])
                         else:
                             pslicefile.write(a)
-                    for a in calignments:
+                    for a in calignments: 
                         if isinstance(a,tuple):
                             cslicefile.write(a[0])
                             cslicefile.write(a[1])
@@ -226,7 +226,7 @@ def main():
         if e.errno == errno.EPIPE:
             pass
     
-    if slice:
+    if args.bamslice:
         sslicefile.close()
         pysam.sort("-o", os.path.basename(args.bamfile).replace(".bam",".sslice.bam"), os.path.basename(args.bamfile).replace(".bam",".sslice.bam"))
         pysam.index(os.path.basename(args.bamfile).replace(".bam",".sslice.bam"))
