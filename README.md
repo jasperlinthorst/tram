@@ -2,7 +2,7 @@
 
 TRAM is a simple utility script that measures a basepair distance between two anchor points on a reference sequence for each read spanning both points.
 It can be used to assess wheter a repeat element (defined on the reference genome) might be expanded or contracted.
-It considers split read pairs in case an aligner break on the expansion/contraction.
+It considers split read pairs in case an aligner breaks on the expansion/contraction.
 
 ## INSTALL
 
