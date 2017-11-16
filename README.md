@@ -6,13 +6,13 @@ It considers split read pairs in case an aligner break on the expansion/contract
 
 ## INSTALL
 
-python setup.py install
+**python setup.py install**
 
 Tram depends on the pysam and intervaltree packages.
 
 ## USAGE
 
-tram <bam-file> <bed-file>
+tram &lt;bam-file&gt; &lt;bed-file&gt;
 
 The bam-file should contain the reads aligned to your reference sequence.
 The bed-file should contain three columns specifying the chromosome, the start position and the end position of the repeat element which you'd like to ivnestigate.
