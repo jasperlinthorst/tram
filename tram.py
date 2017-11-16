@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 import pysam
-from matplotlib import pyplot as plt
 import os
 import gzip
-import numpy as np
 import random
 from intervaltree import IntervalTree, Interval
 import argparse
