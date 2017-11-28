@@ -49,9 +49,7 @@ For more info, run "tram -h":
   bamfile          BAM file that contains the long read alignments.
   bedfile          BED file specifying the (repeat) regions to scan for
                    expansion/contraction.
-
 >optional arguments:
-
 > * -h, --help       show this help message and exit
 > * --wiggle WIGGLE  How far split reads may span region start and end point and
                    still be considered for length estimation (default: equal
