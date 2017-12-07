@@ -10,7 +10,7 @@ if not sys.version_info[0] == 2:
 from setuptools import setup, Extension
 
 setup(name="tram", version="0.1",
-        install_requires=['intervaltree','pysam'],
+        install_requires=['intervaltree','pysam','numpy','scipy'],
         scripts = ["tram.py"],
         ext_modules=[],
         entry_points = {

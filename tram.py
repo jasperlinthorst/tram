@@ -7,6 +7,13 @@ import random
 from intervaltree import IntervalTree, Interval
 import argparse
 import sys, errno
+import numpy as np
+
+from scipy.optimize import minimize
+from scipy.cluster.vq import kmeans2
+from scipy.stats import norm
+
+import warnings
 
 def querypositionsfromsplitreads(read1,read2,trfstart,trfend):
     r1lhclip=read1.cigar[0][1] if read1.cigar[0][0]==5 else 0
@@ -119,7 +126,7 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
                     if returnseq:
                         lcseq.append(s[:lic])
                     calignments.append(reads[0])
-                    
+        
         else: #handle split-read alignments, take left and rightmost aligned segment wrt the query
             if not usesplitreads:
                 continue
@@ -140,8 +147,12 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
     #if len(se)>100: #exclude estimates that are based on more then this many reads
     #    print "Coverage too high for proper estimate",len(e)
     #    return None
-    
+
     return se,sorientations,salignments,sseq,pe,porientations,palignments,pseq,lce,lcorientations,lcseq,rce,rcorientations,rcseq,calignments
+
+def bimodal_ll(params,data):
+    mu1,mu2,s=params
+    return -np.sum(np.log(np.amax(np.column_stack((norm.pdf(data, loc=mu1, scale=s), norm.pdf(data, loc=mu2, scale=s))),axis=1)+.00000001))
 
 def main():
     desc="""
@@ -155,6 +166,8 @@ def main():
     parser.add_argument("--nosplitreads", dest="usesplitreads", action="store_false", default=True, help="Don't use splitreads for length estimation.")
     parser.add_argument("--seq", dest="returnseq", action="store_true", default=False, help="Return the sequence in between the two flanks.")
     parser.add_argument("--slice", dest="bamslice", action="store_true", default=False, help="Produce bam files (s=singleread,p=splitreads,c=clipping) that contain subsets of the alignments that were used for estimating the lengths.")
+    parser.add_argument("--plot", dest="plot", action="store_true", default=False, help="Create a plot for every locus in the bedfile.")
+    parser.add_argument("-i", dest="interactive", action="store_true", default=False, help="Show interactive plot, (will pause until window is closed).")
     
     args = parser.parse_args()
     
@@ -172,10 +185,19 @@ def main():
     if args.wiggle!=None:
          w=args.wiggle
     
+    if args.plot:
+        from matplotlib import pyplot as plt
+
     try:
         with open(args.bedfile) as trf:
+            #write a header that describes the columns
+            cols=['chrom','trfstart','trfend','reflength','length estimate 1','length estimate 2','within read alignment estimates','split read alignment estimates','left clipping','right clipping']
+            if args.returnseq:
+                cols+=['within read alignment estimates (sequence)','split read alignment estimates (sequence)','left clipping (sequence)','right clipping (sequence)']
+
+            sys.stdout.write("#"+"\t".join(cols)+"\n")
             for i,line in enumerate(trf):
-                cols=line.split("\t")
+                cols=line.rstrip().split("\t")
                 chrom,trfstart,trfend=cols[0],int(cols[1]),int(cols[2])
                 
                 if args.wiggle==None:
@@ -185,7 +207,23 @@ def main():
                 
                 se,sorientations,salignments,sseq,pe,porientations,palignments,pseq,lce,lcorientations,lcseq,rce,rcorientations,rcseq,calignments=v
                 
-                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,\
+                #Fit bimodal gaussion distribution to come up with diploid assignment
+                lengthdist=np.array(se+pe).astype(float)
+                
+                with warnings.catch_warnings(): #to prevent scipy kmeans userwarnings
+                    warnings.simplefilter("ignore")
+                    s=set([1])
+                    while len(s)==1:
+                        initmu,l=kmeans2(lengthdist,2,iter=10) #use kmeans to initialize parameters
+                        s=set(l)
+
+                fit=minimize(bimodal_ll,x0=(initmu[0],initmu[1],1),bounds=[(None,None),(None,None),(1,None)],method='L-BFGS-B',args=lengthdist) #minimize negative likelihood for bimodal gaussian distribution
+
+                lengthestimates=sorted([int(fit.x[0]),int(fit.x[1])])
+
+                # ll=bimodal_ll(fit.x, lengthdist)*-1
+
+                sys.stdout.write("%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates[0],lengthestimates[1], \
                                                             ",".join([str(x) for x in se]),\
                                                             ",".join([str(x) for x in pe]),\
                                                             ",".join([str(x) for x in lce]),\
@@ -200,6 +238,30 @@ def main():
                 
                 sys.stdout.write("\n")
                 
+                if args.plot:
+                    plt.clf()
+                    # plt.subplot(211)
+                    # plt.plot([1]*len(lengthdist),lengthdist,'*')
+                    # plt.axhline(y=fit.x[0],linewidth=1,color='black',linestyle='solid')
+                    # plt.axhline(y=fit.x[1],linewidth=1,color='black',linestyle='solid')
+                    # plt.title(" ".join(cols[:3]))
+                    # plt.subplot(212)
+                    plt.hist(lengthdist, bins=25, normed=True, alpha=0.6, color='g')
+                    xmin, xmax = plt.xlim()
+                    x = np.linspace(xmin, xmax, 100)
+                    p1 = norm.pdf(x, lengthestimates[0], fit.x[2])
+                    plt.plot(x, p1, 'k', linewidth=2)
+                    p2 = norm.pdf(x, lengthestimates[1], fit.x[2])
+                    plt.plot(x, p2, 'k', linewidth=2)
+
+                    plt.axvline(x=lengthestimates[0],linewidth=1,color='b',linestyle='-')
+                    plt.axvline(x=lengthestimates[1],linewidth=1,color='r',linestyle='-')
+
+                    if args.interactive:
+                        plt.show()
+                    else:
+                        plt.savefig("tram_"+"_".join(cols[:3])+".png")
+
                 if args.bamslice:
                     for a in salignments:
                         if isinstance(a,tuple):
