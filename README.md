@@ -25,21 +25,26 @@ The first columns are essentialy a repetition of what was specified in the bed f
 1. Reference chromosome.
 2. Start of the repeat elements
 3. End of the repeat elements
-4. Length on the reference (essentially 3-2)
+4. Length on the reference assembly (essentially 3-2)
 
-The second part contain the (comma separated) length measurements from the sequence reads:
+The second part contains the estimated lengths of the diploid alleles (maximum likelihood estimate from a bimodal gaussian distrbution) given the sequence data:
 
-5. Length measurements of alignments that span the locus
-6. Length measurements of split-read alignments that break on the flanks of the specified region
-7. Length of the sequence that was clipped on the left flank, for alignments that did not span the locus
-8. Length of the sequence that was clipped on the rihgt flank, for alignments that did not span the locus
+5. Length estimate for allele 1
+6. Length estimate for allele 2
+
+The third part contains the (comma separated) length measurements from the sequence reads:
+
+7. Length measurements of alignments that span the locus
+8. Length measurements of split-read alignments that break on the flanks of the specified region
+9. Length of the sequence that was clipped on the left flank, for alignments that did not span the locus
+10. Length of the sequence that was clipped on the rihgt flank, for alignments that did not span the locus
 
 When --seq was specified the following additional columns are output:
 
-9. Sequence that corresponds to the length measurements in column 5
-10. Sequence that corresponds to the length measurements in column 6
-11. Sequence that corresponds to the length measurements in column 7
-12. Sequence that corresponds to the length measurements in column 8
+11. Sequence that corresponds to the length measurements in column 5
+12. Sequence that corresponds to the length measurements in column 6
+13. Sequence that corresponds to the length measurements in column 7
+14. Sequence that corresponds to the length measurements in column 8
 
 For more info, run "tram -h":
 
