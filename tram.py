@@ -173,15 +173,17 @@ def main():
     
     bamfile=pysam.AlignmentFile(args.bamfile, "rb")
     
+    prefix=os.path.basename(args.bamfile).replace(".bam","")
+
     if not args.bamfile.endswith(".bam"):
         print "Invalid bam file."
         return
     
     if args.bamslice:
-        slicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".slice.bam"), "wb", template=bamfile)
-        sslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".sslice.bam"), "wb", template=bamfile)
-        pslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".pslice.bam"), "wb", template=bamfile)
-        cslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".cslice.bam"), "wb", template=bamfile)
+        slicefile=pysam.AlignmentFile(prefix+".slice.bam", "wb", template=bamfile)
+        sslicefile=pysam.AlignmentFile(prefix+".sslice.bam", "wb", template=bamfile)
+        pslicefile=pysam.AlignmentFile(prefix+".pslice.bam", "wb", template=bamfile)
+        cslicefile=pysam.AlignmentFile(prefix+".cslice.bam", "wb", template=bamfile)
     
     if args.wiggle!=None:
          w=args.wiggle
@@ -281,7 +283,7 @@ def main():
                     if args.interactive:
                         plt.show()
                     else:
-                        plt.savefig("tram_"+"_".join(cols[:3])+"_"+name+".png")
+                        plt.savefig(prefix+"_"+"_".join(cols[:3])+"_"+name+".png")
 
                 if args.bamslice:
                     
