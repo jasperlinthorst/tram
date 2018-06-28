@@ -178,6 +178,7 @@ def main():
         return
     
     if args.bamslice:
+        slicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".slice.bam"), "wb", template=bamfile)
         sslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".sslice.bam"), "wb", template=bamfile)
         pslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".pslice.bam"), "wb", template=bamfile)
         cslicefile=pysam.AlignmentFile(os.path.basename(args.bamfile).replace(".bam",".cslice.bam"), "wb", template=bamfile)
@@ -189,6 +190,11 @@ def main():
         from matplotlib import pyplot as plt
 
     try:
+        slicedalignments=set()
+        sslicedalignments=set()
+        pslicedalignments=set()
+        cslicedalignments=set()
+
         with open(args.bedfile) as trf:
             #write a header that describes the columns
             cols=['chrom','trfstart','trfend','reflength','length estimate 1','length estimate 2','within read alignment estimates','split read alignment estimates','left clipping','right clipping']
@@ -200,9 +206,14 @@ def main():
                 cols=line.rstrip().split("\t")
                 chrom,trfstart,trfend=cols[0],int(cols[1]),int(cols[2])
                 
+                if len(cols)>=4:
+                    name=cols[3]
+                else:
+                    name="unknown"
+                
                 if args.wiggle==None:
                     w=trfend-trfstart
-
+                
                 v=estimateexpansion(bamfile,chrom,trfstart,trfend,wiggle=w,usesplitreads=args.usesplitreads,returnseq=args.returnseq)
                 
                 se,sorientations,salignments,sseq,pe,porientations,palignments,pseq,lce,lcorientations,lcseq,rce,rcorientations,rcseq,calignments=v
@@ -248,7 +259,7 @@ def main():
                     # plt.plot([1]*len(lengthdist),lengthdist,'*')
                     # plt.axhline(y=fit.x[0],linewidth=1,color='black',linestyle='solid')
                     # plt.axhline(y=fit.x[1],linewidth=1,color='black',linestyle='solid')
-                    # plt.title(" ".join(cols[:3]))
+                    plt.title(" ".join(cols[:3]))
                     # plt.subplot(212)
                     #plt.hist(lengthdist, bins=25, density=True, alpha=0.6, color='g')
                     plt.hist(lengthdist, bins=25, density=True, alpha=0.6, color='g')
@@ -270,33 +281,51 @@ def main():
                     if args.interactive:
                         plt.show()
                     else:
-                        plt.savefig("tram_"+"_".join(cols[:3])+".png")
+                        plt.savefig("tram_"+"_".join(cols[:3])+"_"+name+".png")
 
                 if args.bamslice:
+                    
                     for a in salignments:
-                        if isinstance(a,tuple):
-                            sslicefile.write(a[0])
-                            sslicefile.write(a[1])
-                        else:
+                        aid=(a.query_name,a.pos)
+                        if aid not in sslicedalignments:
                             sslicefile.write(a)
-                    for a in palignments:
-                        if isinstance(a,tuple):
-                            pslicefile.write(a[0])
-                            pslicefile.write(a[1])
-                        else:
-                            pslicefile.write(a)
-                    for a in calignments: 
-                        if isinstance(a,tuple):
-                            cslicefile.write(a[0])
-                            cslicefile.write(a[1])
-                        else:
+                            sslicedalignments.add(aid)
+                            
+                            if aid not in slicedalignments:
+                                slicefile.write(a)
+                                slicedalignments.add(aid)
+
+                    for pa in palignments:
+                        for a in pa:
+                            aid=(a.query_name,a.pos)
+                            if aid not in pslicedalignments:
+                                pslicefile.write(a)
+                                pslicedalignments.add(aid)
+                                
+                                if aid not in slicedalignments:
+                                    slicefile.write(a)
+                                    slicedalignments.add(aid)
+
+                    for a in calignments:
+                        aid=(a.query_name,a.pos)
+                        if aid not in cslicedalignments:
                             cslicefile.write(a)
+                            cslicedalignments.add(aid)
+                        
+                        if aid not in slicedalignments:
+                            slicefile.write(a)
+                            slicedalignments.add(aid)
     
     except IOError as e:
         if e.errno == errno.EPIPE:
             pass
     
     if args.bamslice:
+        
+        slicefile.close()
+        pysam.sort("-o", os.path.basename(args.bamfile).replace(".bam",".slice.bam"), os.path.basename(args.bamfile).replace(".bam",".slice.bam"))
+        pysam.index(os.path.basename(args.bamfile).replace(".bam",".slice.bam"))
+        
         sslicefile.close()
         pysam.sort("-o", os.path.basename(args.bamfile).replace(".bam",".sslice.bam"), os.path.basename(args.bamfile).replace(".bam",".sslice.bam"))
         pysam.index(os.path.basename(args.bamfile).replace(".bam",".sslice.bam"))
@@ -308,6 +337,5 @@ def main():
         cslicefile.close()
         pysam.sort("-o", os.path.basename(args.bamfile).replace(".bam",".cslice.bam"), os.path.basename(args.bamfile).replace(".bam",".cslice.bam"))
         pysam.index(os.path.basename(args.bamfile).replace(".bam",".cslice.bam"))
-        
 
     bamfile.close()
