@@ -210,20 +210,24 @@ def main():
                 #Fit bimodal gaussion distribution to come up with diploid assignment
                 lengthdist=np.array(se+pe).astype(float)
                 
-                with warnings.catch_warnings(): #to prevent scipy kmeans userwarnings
-                    warnings.simplefilter("ignore")
-                    s=set([1])
-                    while len(s)==1:
-                        initmu,l=kmeans2(lengthdist,2,iter=10) #use kmeans to initialize parameters
-                        s=set(l)
-
-                fit=minimize(bimodal_ll,x0=(initmu[0],initmu[1],1),bounds=[(None,None),(None,None),(1,None)],method='L-BFGS-B',args=lengthdist) #minimize negative likelihood for bimodal gaussian distribution
-
-                lengthestimates=sorted([int(fit.x[0]),int(fit.x[1])])
-
+                fit=None
+                if len(lengthdist)>1:
+                    with warnings.catch_warnings(): #to prevent scipy kmeans userwarnings
+                        warnings.simplefilter("ignore")
+                        s=set([1])
+                        while len(s)==1:
+                            initmu,l=kmeans2(lengthdist,2,iter=10) #use kmeans to initialize parameters
+                            s=set(l)
+                    fit=minimize(bimodal_ll,x0=(initmu[0],initmu[1],1),bounds=[(None,None),(None,None),(1,None)],method='L-BFGS-B',args=lengthdist) #minimize negative likelihood for bimodal gaussian distribution
+                    lengthestimates=sorted([int(fit.x[0]),int(fit.x[1])])
+                elif len(lengthdist)==1:
+                    lengthestimates=(lengthdist[0],lengthdist[0])
+                else:
+                    lengthestimates=(None,None)
+                
                 # ll=bimodal_ll(fit.x, lengthdist)*-1
-
-                sys.stdout.write("%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates[0],lengthestimates[1], \
+                
+                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates[0],lengthestimates[1], \
                                                             ",".join([str(x) for x in se]),\
                                                             ",".join([str(x) for x in pe]),\
                                                             ",".join([str(x) for x in lce]),\
@@ -246,17 +250,23 @@ def main():
                     # plt.axhline(y=fit.x[1],linewidth=1,color='black',linestyle='solid')
                     # plt.title(" ".join(cols[:3]))
                     # plt.subplot(212)
-                    plt.hist(lengthdist, bins=25, normed=True, alpha=0.6, color='g')
+                    #plt.hist(lengthdist, bins=25, density=True, alpha=0.6, color='g')
+                    plt.hist(lengthdist, bins=25, density=True, alpha=0.6, color='g')
                     xmin, xmax = plt.xlim()
                     x = np.linspace(xmin, xmax, 100)
-                    p1 = norm.pdf(x, lengthestimates[0], fit.x[2])
-                    plt.plot(x, p1, 'k', linewidth=2)
-                    p2 = norm.pdf(x, lengthestimates[1], fit.x[2])
-                    plt.plot(x, p2, 'k', linewidth=2)
-
-                    plt.axvline(x=lengthestimates[0],linewidth=1,color='b',linestyle='-')
-                    plt.axvline(x=lengthestimates[1],linewidth=1,color='r',linestyle='-')
-
+                    
+                    if fit!=None:
+                        p1 = norm.pdf(x, lengthestimates[0], fit.x[2])
+                        plt.plot(x, p1, 'k', linewidth=2)
+                        p2 = norm.pdf(x, lengthestimates[1], fit.x[2])
+                        plt.plot(x, p2, 'k', linewidth=2)
+                    
+                    if lengthestimates[0]!=None:
+                        plt.axvline(x=lengthestimates[0],linewidth=1,color='b',linestyle='-')
+                    
+                    if lengthestimates[1]!=None:
+                        plt.axvline(x=lengthestimates[1],linewidth=1,color='r',linestyle='-')
+                    
                     if args.interactive:
                         plt.show()
                     else:
