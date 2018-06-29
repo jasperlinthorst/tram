@@ -241,6 +241,11 @@ def main():
                 fit=None
                 lengthestimates=[None]
                 lengthestimates_sigma=[None]
+
+                lengthestimates_str=""
+                lengthestimates_sigma_str=""
+                lengthdist_str=""
+                haplotypelabels_str=""
                 
                 if len(lengthdist)>=args.ploidy:
 
@@ -268,7 +273,7 @@ def main():
                     
                     # print "kmeans",params
                     logging.debug("Perform ll fit: %s"%name)
-                    bounds=[(0,None),(0.1,None)]*args.ploidy
+                    bounds=[(0,None),(1,None)]*args.ploidy
                     fit=minimize(bimodal_ll,x0=params,args=lengthdist,bounds=bounds,method='L-BFGS-B')
                     logging.debug("Done")
 
@@ -277,8 +282,24 @@ def main():
 
                     lengthestimates=[int(fit.x[i*2]) for i in range(args.ploidy)]
                     lengthestimates_sigma=[float(fit.x[i*2+1]) for i in range(args.ploidy)]
-                
-                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates, lengthestimates_sigma, \
+                    
+                    haplotypelabels=[0]*len(lengthdist)
+                    for i,x in enumerate(lengthdist):
+                        a=np.zeros(args.ploidy)
+                        for j in range(args.ploidy):
+                            a[j]=norm.pdf(x,loc=fit.x[j*2],scale=fit.x[j*2+1])
+                        haplotypelabels[i]=np.argmax(a)
+
+                    lengthestimates_str=",".join([str(int(v)) for v in lengthestimates])
+                    lengthestimates_sigma_str=",".join([str(v) for v in lengthestimates_sigma])
+                    lengthdist_str=",".join([str(int(v)) for v in lengthdist])
+                    haplotypelabels_str=",".join([str(v) for v in haplotypelabels])
+
+                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s"%(chrom, trfstart, trfend, trfend-trfstart, \
+                                                            lengthestimates_str, \
+                                                            lengthestimates_sigma_str, \
+                                                            lengthdist_str, \
+                                                            haplotypelabels_str, \
                                                             ",".join([str(x) for x in se]),\
                                                             ",".join([str(x) for x in pe]),\
                                                             ",".join([str(x) for x in lce]),\
