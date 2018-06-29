@@ -240,6 +240,7 @@ def main():
                 
                 fit=None
                 lengthestimates=[None]
+                lengthestimates_sigma=[None]
                 
                 if len(lengthdist)>=args.ploidy:
 
