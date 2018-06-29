@@ -10,7 +10,6 @@ import sys, errno
 import numpy as np
 import logging
 
-
 from scipy.optimize import minimize
 from scipy.cluster.vq import kmeans2
 from scipy.stats import norm
@@ -240,13 +239,15 @@ def main():
                 lengthdist=np.array(se+pe).astype(float)
                 
                 fit=None
-                if len(lengthdist)>1:
+                lengthestimates=[None]
+                
+                if len(lengthdist)>=args.ploidy:
 
                     with warnings.catch_warnings(): #to prevent scipy kmeans userwarnings
                         warnings.simplefilter("ignore")
                         # s=set([1])
                         # while len(s)==1:
-                        logging.debug("Perform kmeans for: %s"%name)
+                        logging.debug("Perform kmeans for: %s on %s"%(name,lengthdist))
                         # print "d",lengthdist
                         initmu,l=kmeans2(lengthdist,args.ploidy,iter=10,minit='points') #use kmeans to quickly initialize parameters
                         # print initmu
@@ -275,11 +276,6 @@ def main():
 
                     lengthestimates=[int(fit.x[i*2]) for i in range(args.ploidy)]
                     lengthestimates_sigma=[float(fit.x[i*2+1]) for i in range(args.ploidy)]
-
-                elif len(lengthdist)==1:
-                    lengthestimates=(lengthdist[0],lengthdist[0])
-                else:
-                    lengthestimates=(None,None)
                 
                 sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates, lengthestimates_sigma, \
                                                             ",".join([str(x) for x in se]),\
