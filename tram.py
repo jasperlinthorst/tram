@@ -8,6 +8,8 @@ from intervaltree import IntervalTree, Interval
 import argparse
 import sys, errno
 import numpy as np
+import logging
+
 
 from scipy.optimize import minimize
 from scipy.cluster.vq import kmeans2
@@ -150,9 +152,19 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
 
     return se,sorientations,salignments,sseq,pe,porientations,palignments,pseq,lce,lcorientations,lcseq,rce,rcorientations,rcseq,calignments
 
-def bimodal_ll(params,data):
-    mu1,mu2,s=params
-    return -np.sum(np.log(np.amax(np.column_stack((norm.pdf(data, loc=mu1, scale=s), norm.pdf(data, loc=mu2, scale=s))),axis=1)+.00000001))
+def bimodal_ll(params,data):    
+    # print data
+    # print "pdf for",[(params[i*2],params[i*2+1]) for i in range(len(params)/2)], [norm.pdf(data, loc=params[i*2], scale=params[i*2+1]) for i in range(len(params)/2)]
+    return -np.sum(np.log(np.amax(np.column_stack([norm.pdf(data, loc=params[i*2], scale=params[i*2+1]) for i in range(len(params)/2)]),axis=1)+.00000001))
+
+    # if len(params)==4:
+    #     mu1,s1,mu2,s2=params
+    #     return -np.sum(np.log(np.amax(np.column_stack((norm.pdf(data, loc=mu1, scale=s1), norm.pdf(data, loc=mu2, scale=s2))),axis=1)+.00000001))
+    # elif len(params)==2:
+    #     mu1,s1=params
+    #     return -np.sum(np.log(norm.pdf(data, loc=mu1, scale=s1)+.00000001))
+    # else:
+    #     return
 
 def main():
     desc="""
@@ -167,16 +179,20 @@ def main():
     parser.add_argument("--seq", dest="returnseq", action="store_true", default=False, help="Return the sequence in between the two flanks.")
     parser.add_argument("--slice", dest="bamslice", action="store_true", default=False, help="Produce bam files (s=singleread,p=splitreads,c=clipping) that contain subsets of the alignments that were used for estimating the lengths.")
     parser.add_argument("--plot", dest="plot", action="store_true", default=False, help="Create a plot for every locus in the bedfile.")
+    parser.add_argument("--ploidy", dest="ploidy", type=int, default=2, help="Specify ploidy of the input sample, for fitting model on expansion length distribution.")
     parser.add_argument("-i", dest="interactive", action="store_true", default=False, help="Show interactive plot, (will pause until window is closed).")
-    
+    parser.add_argument("-l", "--log-level", type=int, dest="loglevel", default=20, help="Log level: 1=trace 10=debug 20=info 30=warn 40=error 50=fatal.")
+
     args = parser.parse_args()
     
+    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=args.loglevel)
+
     bamfile=pysam.AlignmentFile(args.bamfile, "rb")
     
     prefix=os.path.basename(args.bamfile).replace(".bam","")
 
     if not args.bamfile.endswith(".bam"):
-        print "Invalid bam file."
+        logging.fatal("Invalid bam file.")
         return
     
     if args.bamslice:
@@ -199,7 +215,7 @@ def main():
 
         with open(args.bedfile) as trf:
             #write a header that describes the columns
-            cols=['chrom','trfstart','trfend','reflength','length estimate 1','length estimate 2','within read alignment estimates','split read alignment estimates','left clipping','right clipping']
+            cols=['chrom','trfstart','trfend','reflength','length estimates (ploidy)','length std (ploidy)','within read alignment estimates','split read alignment estimates','left clipping','right clipping']
             if args.returnseq:
                 cols+=['within read alignment estimates (sequence)','split read alignment estimates (sequence)','left clipping (sequence)','right clipping (sequence)']
 
@@ -225,22 +241,47 @@ def main():
                 
                 fit=None
                 if len(lengthdist)>1:
+
                     with warnings.catch_warnings(): #to prevent scipy kmeans userwarnings
                         warnings.simplefilter("ignore")
-                        s=set([1])
-                        while len(s)==1:
-                            initmu,l=kmeans2(lengthdist,2,iter=10) #use kmeans to initialize parameters
-                            s=set(l)
-                    fit=minimize(bimodal_ll,x0=(initmu[0],initmu[1],1),bounds=[(None,None),(None,None),(1,None)],method='L-BFGS-B',args=lengthdist) #minimize negative likelihood for bimodal gaussian distribution
-                    lengthestimates=sorted([int(fit.x[0]),int(fit.x[1])])
+                        # s=set([1])
+                        # while len(s)==1:
+                        logging.debug("Perform kmeans for: %s"%name)
+                        # print "d",lengthdist
+                        initmu,l=kmeans2(lengthdist,args.ploidy,iter=10,minit='points') #use kmeans to quickly initialize parameters
+                        # print initmu
+                        logging.debug("Done")
+
+                        initstd=np.ones(args.ploidy)
+
+                        for i in range(args.ploidy):
+                            w=lengthdist[np.where(l==i)]
+                            if len(w)>1:
+                                initstd[i]=np.std(w)
+
+                        # initstd=(np.std(lengthdist[np.where(l==0)]),np.std(lengthdist[np.where(l==1)]))
+                        # s=set(l)
+                    
+                    params=np.array([(initmu[i],initstd[i]) for i in range(args.ploidy)]).flatten()
+                    
+                    # print "kmeans",params
+                    logging.debug("Perform ll fit: %s"%name)
+                    bounds=[(0,None),(0.1,None)]*args.ploidy
+                    fit=minimize(bimodal_ll,x0=params,args=lengthdist,bounds=bounds,method='L-BFGS-B')
+                    logging.debug("Done")
+
+                    # fit=minimize(bimodal_ll,x0=(initmu[0],initmu[1],initstd[0],initstd[1]),bounds=[(None,None),(None,None),(1,None),(1,None)],method='L-BFGS-B',args=lengthdist) #minimize negative likelihood for bimodal gaussian distribution
+                    # print "ll fit",fit.x
+
+                    lengthestimates=[int(fit.x[i*2]) for i in range(args.ploidy)]
+                    lengthestimates_sigma=[float(fit.x[i*2+1]) for i in range(args.ploidy)]
+
                 elif len(lengthdist)==1:
                     lengthestimates=(lengthdist[0],lengthdist[0])
                 else:
                     lengthestimates=(None,None)
                 
-                # ll=bimodal_ll(fit.x, lengthdist)*-1
-                
-                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates[0],lengthestimates[1], \
+                sys.stdout.write("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s"%(chrom,trfstart,trfend,trfend-trfstart,lengthestimates, lengthestimates_sigma, \
                                                             ",".join([str(x) for x in se]),\
                                                             ",".join([str(x) for x in pe]),\
                                                             ",".join([str(x) for x in lce]),\
@@ -256,30 +297,28 @@ def main():
                 sys.stdout.write("\n")
                 
                 if args.plot:
-                    plt.clf()
-                    # plt.subplot(211)
-                    # plt.plot([1]*len(lengthdist),lengthdist,'*')
-                    # plt.axhline(y=fit.x[0],linewidth=1,color='black',linestyle='solid')
-                    # plt.axhline(y=fit.x[1],linewidth=1,color='black',linestyle='solid')
+                    
+                    fig,ax=plt.subplots(figsize=(8,8),nrows=2,ncols=2)                    
                     plt.title(" ".join(cols[:3]))
-                    # plt.subplot(212)
-                    #plt.hist(lengthdist, bins=25, density=True, alpha=0.6, color='g')
-                    plt.hist(lengthdist, bins=25, density=True, alpha=0.6, color='g')
-                    xmin, xmax = plt.xlim()
-                    x = np.linspace(xmin, xmax, 100)
                     
+                    ax[0][0].hist(lengthdist, bins=25, density=False, alpha=0.6, color='g')
+                    ax[0][0].axvline(x=trfend-trfstart,linewidth=1,color='k',linestyle='--')
+
+                    xmin, xmax = ax[0][0].get_xlim()
+
                     if fit!=None:
-                        p1 = norm.pdf(x, lengthestimates[0], fit.x[2])
-                        plt.plot(x, p1, 'k', linewidth=2)
-                        p2 = norm.pdf(x, lengthestimates[1], fit.x[2])
-                        plt.plot(x, p2, 'k', linewidth=2)
+                        ax[1][0].axvline(x=trfend-trfstart,linewidth=1,color='k',linestyle='--')
+                        for i in range(args.ploidy):
+                            dwidth=7
+                            x = np.linspace(fit.x[i*2]-(dwidth*fit.x[i*2+1]), fit.x[i*2]+(dwidth*fit.x[i*2+1]), 100)
+                            p1 = norm.pdf(x, fit.x[i*2], fit.x[i*2+1])
+                            ax[1][0].plot(x, p1, 'k', linewidth=2)
+                            ax[1][0].axvline(x=fit.x[i*2],linewidth=1,color='b',linestyle='-')
+
+                        ax[1][0].set_xlim(xmin,xmax)
                     
-                    if lengthestimates[0]!=None:
-                        plt.axvline(x=lengthestimates[0],linewidth=1,color='b',linestyle='-')
-                    
-                    if lengthestimates[1]!=None:
-                        plt.axvline(x=lengthestimates[1],linewidth=1,color='r',linestyle='-')
-                    
+                    ax[0][1].boxplot(lengthdist)
+
                     if args.interactive:
                         plt.show()
                     else:
