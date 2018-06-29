@@ -214,7 +214,7 @@ def main():
 
         with open(args.bedfile) as trf:
             #write a header that describes the columns
-            cols=['chrom','trfstart','trfend','reflength','length estimates (ploidy)','length std (ploidy)','within read alignment estimates','split read alignment estimates','left clipping','right clipping']
+            cols=['chrom','trfstart','trfend','reflength','expansion_haplotype','expansion-std_haplotype','measurements','haplotype_labels','within_estimates','split-align_estimates','left_clipping','right_clipping']
             if args.returnseq:
                 cols+=['within read alignment estimates (sequence)','split read alignment estimates (sequence)','left clipping (sequence)','right clipping (sequence)']
 
@@ -246,7 +246,7 @@ def main():
                 lengthestimates_sigma_str=""
                 lengthdist_str=""
                 haplotypelabels_str=""
-                
+
                 if len(lengthdist)>=args.ploidy:
 
                     with warnings.catch_warnings(): #to prevent scipy kmeans userwarnings
