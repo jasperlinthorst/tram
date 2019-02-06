@@ -10,27 +10,40 @@ import sys, errno
 import numpy as np
 import logging
 
+# import probconslib
+
 from scipy.optimize import minimize
 from scipy.cluster.vq import kmeans2
 from scipy.stats import norm
 
 import warnings
 
+
+
 def querypositionsfromsplitreads(read1,read2,trfstart,trfend):
     r1lhclip=read1.cigar[0][1] if read1.cigar[0][0]==5 else 0
     r2lhclip=read2.cigar[0][1] if read2.cigar[0][0]==5 else 0
+
     for r1qp,r1rp in read1.get_aligned_pairs(matches_only=True):
         if r1rp>=trfstart:
             break
         else:
             qa=r1qp+r1lhclip
             ra=r1rp
+    
     for r2qp,r2rp in read2.get_aligned_pairs(matches_only=True):
         if r2rp>=trfend:
             break
         else:
             qb=r2qp+r2lhclip
             rb=r2rp
+
+    # print read1.query_name, ra, rb, rb-ra
+    # print read1.query_name, qa, qb, qb-qa
+
+    # print read1.query_name, read1.is_supplementary, read2.is_supplementary, read1.cigar[0], read2.cigar[0], read1.query_alignment_end, read2.query_alignment_start, read2.query_alignment_start-read1.query_alignment_end
+    # print read1.query_name, read1.is_supplementary, read2.is_supplementary, read1.cigar[0], read2.cigar[0], qa, qb, qb-qa
+
     return qa,qb
 
 def querypositionsfromsingleread(read,trfstart,trfend):
@@ -63,6 +76,7 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
     #extract reads with more than one alignment
     mreads=dict()
     for read in pysamfile.fetch(chrom,trfstart,trfend):
+        # print "fetch",read.query_name,read.is_supplementary,read.is_secondary,read.is_reverse
         if (read.reference_start<trfstart-wiggle and read.reference_end>trfstart) or \
             (read.reference_start<trfend and read.reference_end>trfend+wiggle):
             if read.qname in mreads:
@@ -83,21 +97,35 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
     lcorientations=[]
     rcorientations=[]
     
-    sseq=[]
-    pseq=[]
-    rcseq=[]
-    lcseq=[]
+    sseq,pseq,rcseq,lcseq=[],[],[],[] #sequence
+    sseqq,pseqq,rcseqq,lcseqq=[],[],[],[] #sequence quality
     
-    #select left and right most alignment that does overlap the trf
+    #select left and right most alignment that overlaps the trf
     for readname in mreads:
+        # print readname
+
         reads=sorted(mreads[readname],key=lambda r: r.reference_start+r.alen)
+
+        # print "alignments",[(read.pos,read.is_supplementary) for read in reads]
+
         if returnseq:
-            s=""
+            s=None
+            q=None
             for read in reads:
                 if not read.is_supplementary and not read.is_secondary:
                     s=read.query_sequence
+                    q=read.query_qualities
                     break
+            else:
+                logging.warn("Read: %s has more than two alignments, but primary does not span %s:%s-%s, so sequence and quality can't be retreived (skip length estimation)."%(readname,chrom,trfstart,trfend))
+                continue
+
             assert(s!=None)
+
+            # INSPECT SEQUENCE QUALITY DISTRIBUTION!
+            # q = read.query_qualities
+            # read.query_squence = read.query_sequence[5:10]
+            # read.query_qualities = q[5:10]
         
         if len(reads)==1: #estimate length within a single aligned segment
             if reads[0].is_supplementary or reads[0].is_secondary:
@@ -109,6 +137,7 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
                 sorientations.append(reads[0].is_reverse)
                 if returnseq:
                     sseq.append(s[qa:qb])
+                    sseqq.append(q[qa:qb])
                 salignments.append(reads[0])
             
             else:
@@ -118,6 +147,7 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
                     rcorientations.append(reads[0].is_reverse)
                     if returnseq:
                         rcseq.append(s[-ric:])
+                        rcseqq.append(q[-ric:])
                     calignments.append(reads[0])
 
                 if reads[0].reference_end>trfend+wiggle and ((reads[0].cigar[0][0]==4 or reads[0].cigar[0][0]==5) and reads[0].reference_start-reads[0].cigar[0][1]<trfstart):
@@ -126,11 +156,13 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
                     lcorientations.append(reads[0].is_reverse)
                     if returnseq:
                         lcseq.append(s[:lic])
+                        lcseqq.append(q[:lic])
                     calignments.append(reads[0])
         
         else: #handle split-read alignments, take left and rightmost aligned segment wrt the query
             if not usesplitreads:
                 continue
+
             read1=reads[0]
             read2=reads[-1]
             if read1.reference_start>trfstart-wiggle or read1.reference_start+read1.alen>trfend+wiggle or \
@@ -138,32 +170,24 @@ def estimateexpansion(pysamfile,chrom,trfstart,trfend,wiggle=500,returnseq=False
                 continue
             if not read1.is_reverse==read2.is_reverse:
                 continue
+
             qa,qb=querypositionsfromsplitreads(read1,read2,trfstart,trfend)
+
             pe.append(qb-qa)
             porientations.append(read1.is_reverse)
             palignments.append((read1,read2))
             if returnseq:
                 pseq.append(s[qa:qb])
+                pseqq.append(q[qa:qb])
     
     #if len(se)>100: #exclude estimates that are based on more then this many reads
     #    print "Coverage too high for proper estimate",len(e)
     #    return None
 
-    return se,sorientations,salignments,sseq,pe,porientations,palignments,pseq,lce,lcorientations,lcseq,rce,rcorientations,rcseq,calignments
+    return se,sorientations,salignments,sseq,sseqq,pe,porientations,palignments,pseq,pseqq,lce,lcorientations,lcseq,lcseqq,rce,rcorientations,rcseq,rcseqq,calignments
 
-def bimodal_ll(params,data):    
-    # print data
-    # print "pdf for",[(params[i*2],params[i*2+1]) for i in range(len(params)/2)], [norm.pdf(data, loc=params[i*2], scale=params[i*2+1]) for i in range(len(params)/2)]
+def bimodal_ll(params,data):
     return -np.sum(np.log(np.amax(np.column_stack([norm.pdf(data, loc=params[i*2], scale=params[i*2+1]) for i in range(len(params)/2)]),axis=1)+.00000001))
-
-    # if len(params)==4:
-    #     mu1,s1,mu2,s2=params
-    #     return -np.sum(np.log(np.amax(np.column_stack((norm.pdf(data, loc=mu1, scale=s1), norm.pdf(data, loc=mu2, scale=s2))),axis=1)+.00000001))
-    # elif len(params)==2:
-    #     mu1,s1=params
-    #     return -np.sum(np.log(norm.pdf(data, loc=mu1, scale=s1)+.00000001))
-    # else:
-    #     return
 
 def main():
     desc="""
@@ -233,10 +257,13 @@ def main():
                 
                 v=estimateexpansion(bamfile,chrom,trfstart,trfend,wiggle=w,usesplitreads=args.usesplitreads,returnseq=args.returnseq)
                 
-                se,sorientations,salignments,sseq,pe,porientations,palignments,pseq,lce,lcorientations,lcseq,rce,rcorientations,rcseq,calignments=v
-                
+                se,sorientations,salignments,sseq,sseqq,pe,porientations,palignments,pseq,pseqq,lce,lcorientations,lcseq,lcseqq,rce,rcorientations,rcseq,rcseqq,calignments=v
+
                 #Fit bimodal gaussion distribution to come up with diploid assignment
                 lengthdist=np.array(se+pe).astype(float)
+
+                qdist=np.array([np.mean(q) for q in sseqq]+[np.mean(q) for q in pseqq])
+                # qdist=np.array(np.mean(sseqq),pseqq).astype(float)
                 
                 fit=None
                 lengthestimates=[None]
@@ -306,17 +333,34 @@ def main():
                                                             ",".join([str(x) for x in rce]),\
                                                             ))
                 
-                if args.returnseq:
-                    sys.stdout.write("\t%s"%",".join(sseq))
-                    sys.stdout.write("\t%s"%",".join(pseq))
-                    sys.stdout.write("\t%s"%",".join(lcseq))
-                    sys.stdout.write("\t%s"%",".join(rcseq))
+                # if args.returnseq:
+                #     sys.stdout.write("\t%s"%",".join(sseq))
+                #     sys.stdout.write("\t%s"%",".join(pseq))
+                #     sys.stdout.write("\t%s"%",".join(lcseq))
+                #     sys.stdout.write("\t%s"%",".join(rcseq))
                 
                 sys.stdout.write("\n")
                 
+                # aobjs=[]
+                # for si,seq in enumerate(sseq):
+                #     if seq!='':
+                #         aobjs.append((str(si),seq))
+
+                # print aobjs
+
+                # pl=probconslib.probcons()
+                # aln=pl.align(aobjs,consistency=1,refinement=100,pretraining=0,consgap=False)
+                
+                # for name,seq in aln[0]:
+                #     print name,seq
+
+                # print aln[1]
+                
+                
+                
                 if args.plot:
                     
-                    fig,ax=plt.subplots(figsize=(8,8),nrows=2,ncols=2)                    
+                    fig,ax=plt.subplots(figsize=(8,8),nrows=2,ncols=2)
                     plt.title(" ".join(cols[:3]))
                     
                     ax[0][0].hist(lengthdist, bins=25, density=False, alpha=0.6, color='g')
@@ -335,7 +379,21 @@ def main():
 
                         ax[1][0].set_xlim(xmin,xmax)
                     
-                    ax[0][1].boxplot(lengthdist)
+
+                    if len(qdist)>0:
+                        s=ax[0][1].scatter([0]*len(lengthdist),lengthdist,c=qdist)
+                        fig.subplots_adjust(right=0.8)
+                        cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+                        fig.colorbar(s, cax=cbar_ax)
+                    else:
+                        ax[0][1].boxplot(lengthdist)
+
+                    haplength=zip(lengthdist,haplotypelabels)
+                    d=[]
+                    for hap in range(args.ploidy):
+                        d.append([l for l,lab in haplength if lab==hap])
+                        # print [l for l,lab in zip(lengthdist,haplotypelabels) if lab==hap]
+                    ax[1][1].boxplot(d)
 
                     if args.interactive:
                         plt.show()
@@ -355,7 +413,7 @@ def main():
                                 slicedalignments.add(aid)
 
                     for pa in palignments:
-                        for a in pa:
+                        for i,a in enumerate(pa):
                             aid=(a.query_name,a.pos)
                             if aid not in pslicedalignments:
                                 pslicefile.write(a)
